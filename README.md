@@ -1,5 +1,5 @@
 # CP467-Project
-## Team Members: Usama, Daniel, Ahnya
+## Team Members: Usama, Daniel, Anh
 
 Below, I will list a general overview of the step-by-step instructions we have to follow for this project.
 
