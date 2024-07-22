@@ -1,6 +1,3 @@
-# CP467-Project
-## Team Members: Usama, Duc Minh Nguyen, Quang Quynh Anh Lam
-
 Below, I will list a general overview of the step-by-step instructions we have to follow for this project.
 
 
