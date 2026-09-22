@@ -1,0 +1,68 @@
+"""Optional end-to-end check: run the app first, install Playwright and Chromium."""
+from pathlib import Path
+from playwright.sync_api import sync_playwright
+
+ROOT = Path(__file__).resolve().parents[1]
+(ROOT / 'artifacts').mkdir(exist_ok=True)
+with sync_playwright() as p:
+    browser = p.chromium.launch(headless=True)
+    page = browser.new_page(viewport={'width':1440,'height':1050}, device_scale_factor=1)
+    page.set_default_timeout(15000)
+    errors = []
+    page.on('pageerror', lambda error: errors.append(str(error)))
+    page.on('response', lambda response: print('API', response.url, response.status, response.text()[:250] if response.status >= 400 else '', flush=True) if '/api/' in response.url and response.request.method == 'POST' else None)
+    page.goto('http://127.0.0.1:8000')
+    page.get_by_role('button', name='Run detection').wait_for()
+    page.wait_for_function("document.getElementById('scene').options.length === 20")
+    page.get_by_role('button', name='Run detection').click()
+    page.wait_for_function("!document.getElementById('run').disabled", timeout=60000)
+    print('Notice:', page.locator('#message').text_content(), flush=True)
+    page.get_by_text('ANALYSIS COMPLETE', exact=True).wait_for(timeout=5000)
+    assert page.locator('#result-rows tr').count() == 15
+    page.screenshot(path=str(ROOT/'artifacts/detection-desktop.png'), full_page=True)
+    page.screenshot(path=str(ROOT/'artifacts/preview.png'), full_page=False)
+    with page.expect_download() as download:
+        page.get_by_role('link', name='Download image').click()
+    assert download.value.suggested_filename.endswith('.jpg')
+    with page.expect_download() as download:
+        page.get_by_role('button', name='Export JSON').click()
+    download.value.save_as(str(ROOT/'artifacts/report.json'))
+    print('Downloads passed', flush=True)
+    page.get_by_role('button', name='Keypoints', exact=True).click()
+    assert 'keypoints view' in page.locator('#image-caption').inner_text()
+    page.get_by_role('button', name='Matches', exact=True).click()
+    page.get_by_label('Reference object', exact=True).select_option('O3')
+    assert 'O3 → S1' in page.locator('#image-caption').inner_text()
+    print('Image views passed', flush=True)
+    page.get_by_text('Evaluate against your observations', exact=True).click()
+    page.locator('#truth-options input[value="O1"]').check()
+    page.get_by_role('button', name='Calculate metrics').click()
+    page.get_by_text('Precision', exact=False).filter(has_text='Recall').wait_for()
+    print('Metrics passed', flush=True)
+    page.get_by_role('button', name='Reference library', exact=False).click()
+    assert page.locator('#object-grid article').count() == 15
+    page.get_by_role('button', name='Panorama studio', exact=False).click()
+    page.get_by_role('button', name='Stitch selected scenes').click()
+    assert 'Choose between 2 and 6' in page.locator('#message').inner_text()
+    page.locator('#stitch-scenes input[value="S1"]').check()
+    page.locator('#stitch-scenes input[value="S2"]').check()
+    page.get_by_role('button', name='Stitch selected scenes').click()
+    page.wait_for_function("!document.getElementById('stitch').disabled", timeout=60000)
+    assert page.locator('#panorama-result').is_visible()
+    page.get_by_role('button', name='Object detection', exact=False).click()
+    page.locator('#upload').set_input_files(str(ROOT/'Scenes/S11.png'))
+    assert page.locator('#scene').is_disabled()
+    page.get_by_role('button', name='Run detection').click()
+    page.wait_for_function("!document.getElementById('run').disabled", timeout=60000)
+    print('Notice:', page.locator('#message').text_content(), flush=True)
+    page.get_by_text('ANALYSIS COMPLETE', exact=True).wait_for(timeout=5000)
+    assert 'Uploaded scene' in page.locator('#image-caption').inner_text()
+    page.get_by_role('button', name='Use project scene').click()
+    assert page.locator('#scene').is_enabled()
+    assert not page.locator('#results').is_visible()
+    page.set_viewport_size({'width':390,'height':844})
+    page.screenshot(path=str(ROOT/'artifacts/mobile.png'), full_page=True)
+    assert page.evaluate('document.documentElement.scrollWidth <= innerWidth')
+    print('Browser checks passed. Console errors:', errors)
+    assert not errors
+    browser.close()
